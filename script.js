@@ -16,12 +16,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('模型載入完成');
 
         const imageUpload = document.getElementById('imageUpload');
-        const processBtn = document.getElementById('processBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const mosaicSize = document.getElementById('mosaicSize');
         const imageList = document.getElementById('imageList');
         const sizeLabel = document.querySelector('.size-label');
         const themeToggle = document.getElementById('themeToggle');
+        const completionModal = document.getElementById('completionModal');
+        const modalDownloadBtn = document.getElementById('modalDownloadBtn');
+        const modalAdjustBtn = document.getElementById('modalAdjustBtn');
 
         let uploadedImages = [];
 
@@ -38,27 +40,70 @@ document.addEventListener('DOMContentLoaded', async () => {
         const savedTheme = localStorage.getItem('theme') || 'dark';
         document.documentElement.setAttribute('data-theme', savedTheme);
 
-        // 更新馬賽克大小標籤
-        mosaicSize.addEventListener('input', () => {
-            sizeLabel.textContent = `${mosaicSize.value}px`;
+        let showCompletionModalEnabled = true;
+
+        // 顯示完成提示
+        function showCompletionModal() {
+            if (showCompletionModalEnabled) {
+                completionModal.classList.add('show');
+            }
+        }
+
+        // 隱藏完成提示
+        function hideCompletionModal() {
+            completionModal.classList.remove('show');
+        }
+
+        // 點擊視窗外部時關閉視窗
+        completionModal.addEventListener('click', (e) => {
+            if (e.target === completionModal) {
+                hideCompletionModal();
+            }
         });
 
+        // 點擊再調整按鈕時自動處理圖片
+        modalAdjustBtn.addEventListener('click', async () => {
+            hideCompletionModal();
+            showCompletionModalEnabled = false;
+            
+            try {
+                let processedCount = 0;
+                const totalImages = uploadedImages.length;
+                
+                for (let i = 0; i < totalImages; i++) {
+                    await processImage(i);
+                    processedCount++;
+                }
+            } catch (error) {
+                console.error('處理圖片時發生錯誤:', error);
+                alert('處理圖片時發生錯誤');
+            }
+        });
+
+        // 關閉按鈕事件
+        const modalCloseBtn = document.querySelector('.modal-close');
+        modalCloseBtn.addEventListener('click', hideCompletionModal);
+
         // 處理圖片上傳
-        imageUpload.addEventListener('change', (e) => {
+        imageUpload.addEventListener('change', async (e) => {
+            resetMosaicSize(); // 重置馬賽克大小
             uploadedImages = [];
             imageList.innerHTML = '';
+            hideCompletionModal();
             
             const files = Array.from(e.target.files).filter(file => 
                 file.type.startsWith('image/')
             );
 
             if (files.length > 0) {
-                files.forEach((file, index) => {
+                let processedCount = 0;
+                for (const file of files) {
                     const reader = new FileReader();
-                    reader.onload = (e) => {
+                    reader.onload = async (e) => {
                         const img = new Image();
                         img.src = e.target.result;
-                        img.onload = () => {
+                        img.onload = async () => {
+                            const index = uploadedImages.length;
                             uploadedImages.push({
                                 original: img,
                                 processed: null,
@@ -69,6 +114,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             const div = document.createElement('div');
                             div.className = 'image-item';
                             div.innerHTML = `
+                                <div class="image-name">${file.name}</div>
                                 <div class="image-preview">
                                     <div class="preview-original">
                                         <span class="preview-label">原始圖片</span>
@@ -79,21 +125,137 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         <img src="${e.target.result}" alt="處理後圖片">
                                     </div>
                                 </div>
-                                <div class="image-name">${file.name}</div>
                             `;
                             imageList.appendChild(div);
 
-                            if (uploadedImages.length === files.length) {
-                                processBtn.disabled = false;
+                            // 自動處理圖片
+                            await processImage(index);
+                            processedCount++;
+
+                            // 當所有圖片都處理完成時才顯示模態框
+                            if (processedCount === files.length) {
+                                setTimeout(() => {
+                                    showCompletionModal();
+                                }, 500);
                             }
                         };
                     };
                     reader.readAsDataURL(file);
-                });
+                }
             } else {
                 alert('請選擇圖片檔案');
             }
         });
+
+        // 馬賽克大小改變時自動更新標籤
+        mosaicSize.addEventListener('input', async (e) => {
+            sizeLabel.textContent = `${mosaicSize.value}px`;
+            
+            // 重新處理所有圖片
+            if (uploadedImages.length > 0) {
+                try {
+                    for (let i = 0; i < uploadedImages.length; i++) {
+                        await processImage(i);
+                    }
+                } catch (error) {
+                    console.error('處理圖片時發生錯誤:', error);
+                }
+            }
+        });
+
+        // 重置馬賽克大小到預設值
+        function resetMosaicSize() {
+            const defaultSize = 20;
+            mosaicSize.value = defaultSize;
+            sizeLabel.textContent = defaultSize;
+        }
+
+        // 處理單張圖片
+        async function processImage(index) {
+            const imgData = uploadedImages[index];
+            if (!imgData) return;
+
+            try {
+                const canvas = document.createElement('canvas');
+                const displayWidth = imgData.original.width;
+                const displayHeight = imgData.original.height;
+                
+                // 設置 canvas 大小為原始圖片大小
+                canvas.width = displayWidth;
+                canvas.height = displayHeight;
+                const ctx = canvas.getContext('2d');
+                
+                // 繪製原始圖片
+                ctx.drawImage(imgData.original, 0, 0);
+
+                // 使用改進的人臉偵測函數
+                const detections = await detectFaces(imgData.original);
+
+                if (detections.length > 0) {
+                    // 為每個人臉套用馬賽克
+                    detections.forEach(detection => {
+                        const box = detection.detection.box;
+                        const x = Math.max(0, box.x - box.width * 0.1);
+                        const y = Math.max(0, box.y - box.height * 0.1);
+                        const width = Math.min(canvas.width - x, box.width * 1.2);
+                        const height = Math.min(canvas.height - y, box.height * 1.2);
+                        
+                        // 獲取當前馬賽克大小並根據圖片大小調整
+                        const baseMosaicSize = parseInt(document.getElementById('mosaicSize').value);
+                        // 根據圖片大小調整馬賽克尺寸
+                        const scaleFactor = Math.min(displayWidth, displayHeight) / 800; // 基準尺寸設為800px
+                        const currentMosaicSize = Math.max(Math.round(baseMosaicSize * scaleFactor), 1);
+                        
+                        for (let px = x; px < x + width; px += currentMosaicSize) {
+                            for (let py = y; py < y + height; py += currentMosaicSize) {
+                                const pixelData = ctx.getImageData(
+                                    Math.floor(px), 
+                                    Math.floor(py), 
+                                    1, 
+                                    1
+                                ).data;
+                                ctx.fillStyle = `rgb(${pixelData[0]},${pixelData[1]},${pixelData[2]})`;
+                                ctx.fillRect(
+                                    Math.floor(px), 
+                                    Math.floor(py), 
+                                    currentMosaicSize, 
+                                    currentMosaicSize
+                                );
+                            }
+                        }
+                    });
+
+                    // 更新預覽圖片
+                    const processedImage = new Image();
+                    processedImage.src = canvas.toDataURL('image/jpeg');
+                    
+                    // 等待圖片加載完成
+                    await new Promise((resolve) => {
+                        processedImage.onload = resolve;
+                    });
+                    
+                    // 更新 DOM
+                    const imageItem = imageList.children[index];
+                    if (imageItem) {
+                        const processedImg = imageItem.querySelector('.preview-processed img');
+                        if (processedImg) {
+                            processedImg.src = processedImage.src;
+                        }
+                    }
+                    
+                    // 保存處理後的圖片
+                    uploadedImages[index].processed = processedImage;
+                    
+                    console.log(`在圖片 ${imgData.name} 中偵測到 ${detections.length} 個人臉`);
+                } else {
+                    console.log(`在圖片 ${imgData.name} 中未偵測到人臉`);
+                    alert(`在圖片 "${imgData.name}" 中未偵測到人臉，請確保人臉清晰可見`);
+                }
+            } catch (error) {
+                console.error('處理圖片時發生錯誤:', error);
+                throw error;
+            }
+        }
 
         // 使用多個模型進行人臉偵測
         async function detectFaces(image) {
@@ -101,7 +263,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const detectionsSSD = await faceapi.detectAllFaces(
                 image,
                 new faceapi.SsdMobilenetv1Options({ 
-                    minConfidence: 0.3, // 降低信心閾值以提高偵測率
+                    minConfidence: 0.3,
                     maxResults: 100 
                 })
             ).withFaceLandmarks();
@@ -109,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const detectionsTiny = await faceapi.detectAllFaces(
                 image,
                 new faceapi.TinyFaceDetectorOptions({
-                    inputSize: 512, // 增加輸入大小以提高準確度
+                    inputSize: 512,
                     scoreThreshold: 0.3
                 })
             ).withFaceLandmarks();
@@ -139,100 +301,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return false; // 移除重複的偵測
                     }
                 }
+                
                 return true;
             });
 
             return allDetections;
         }
 
-        // 處理圖片
-        processBtn.addEventListener('click', async () => {
+        // 下載所有圖片的函數
+        function downloadAllImages() {
             try {
-                processBtn.disabled = true;
-                const size = parseInt(mosaicSize.value);
-
-                for (let i = 0; i < uploadedImages.length; i++) {
-                    const imgData = uploadedImages[i];
-                    const canvas = document.createElement('canvas');
-                    canvas.width = imgData.original.width;
-                    canvas.height = imgData.original.height;
-                    const ctx = canvas.getContext('2d');
-                    
-                    // 繪製原始圖片
-                    ctx.drawImage(imgData.original, 0, 0);
-
-                    // 使用改進的人臉偵測函數
-                    const detections = await detectFaces(imgData.original);
-
-                    if (detections.length > 0) {
-                        // 為每個人臉套用馬賽克
-                        detections.forEach(detection => {
-                            const box = detection.detection.box;
-                            // 擴大偵測區域以確保覆蓋整個臉部
-                            const x = Math.max(0, box.x - box.width * 0.2);
-                            const y = Math.max(0, box.y - box.height * 0.2);
-                            const width = Math.min(canvas.width - x, box.width * 1.4);
-                            const height = Math.min(canvas.height - y, box.height * 1.4);
-                            
-                            // 使用更小的馬賽克大小來提高效果
-                            const mosaicSize = Math.max(3, Math.floor(size * 0.8));
-                            
-                            for (let px = x; px < x + width; px += mosaicSize) {
-                                for (let py = y; py < y + height; py += mosaicSize) {
-                                    const pixelData = ctx.getImageData(
-                                        Math.floor(px), 
-                                        Math.floor(py), 
-                                        1, 
-                                        1
-                                    ).data;
-                                    ctx.fillStyle = `rgb(${pixelData[0]},${pixelData[1]},${pixelData[2]})`;
-                                    ctx.fillRect(
-                                        Math.floor(px), 
-                                        Math.floor(py), 
-                                        mosaicSize, 
-                                        mosaicSize
-                                    );
-                                }
-                            }
-                        });
-                        console.log(`在圖片 ${imgData.name} 中偵測到 ${detections.length} 個人臉`);
-                    } else {
-                        console.log(`在圖片 ${imgData.name} 中未偵測到人臉`);
-                        alert(`在圖片 "${imgData.name}" 中未偵測到人臉，請確保人臉清晰可見`);
-                    }
-
-                    // 更新預覽圖
-                    uploadedImages[i].processed = canvas.toDataURL('image/jpeg');
-                    const processedImg = imageList.children[i].querySelector('.preview-processed img');
-                    processedImg.src = uploadedImages[i].processed;
-                }
-
-                processBtn.disabled = false;
-                downloadBtn.disabled = false;
-            } catch (error) {
-                console.error('處理圖片失敗:', error);
-                alert('處理圖片失敗，請檢查圖片格式和大小');
-                processBtn.disabled = false;
-            }
-        });
-
-        // 下載處理後的圖片
-        downloadBtn.addEventListener('click', () => {
-            try {
-                uploadedImages.forEach((imgData) => {
+                uploadedImages.forEach(imgData => {
                     if (imgData.processed) {
                         const link = document.createElement('a');
                         const fileName = imgData.name.replace(/\.[^/.]+$/, '') + '_mosaic.jpg';
                         link.download = fileName;
-                        link.href = imgData.processed;
+                        link.href = imgData.processed.src;
                         link.click();
                     }
                 });
+                hideCompletionModal();
             } catch (error) {
                 console.error('下載圖片失敗:', error);
-                alert('下載圖片失敗，請檢查網路連接');
+                alert('下載圖片失敗，請重試');
             }
-        });
+        }
+
+        // 綁定下載按鈕事件
+        downloadBtn.addEventListener('click', downloadAllImages);
+        modalDownloadBtn.addEventListener('click', downloadAllImages);
 
     } catch (error) {
         console.error('初始化失敗:', error);

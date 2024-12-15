@@ -3,31 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>照片馬賽克處理器</title>
+    <title>照片打馬賽克批次處理器</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>照片馬賽克處理器</h1>
+        <h1>照片打馬賽克批次處理器</h1>
         
         <div class="upload-section">
-            <input type="file" id="imageUpload" accept="image/*" multiple>
-            <div class="upload-hint">可以選擇一張或多張圖片</div>
-        </div>
+            <div class="control-panel">
+                <div class="upload-controls">
+                    <input type="file" id="imageUpload" multiple accept="image/*">
+                    <label for="imageUpload" class="upload-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        選擇照片
+                    </label>
+                </div>
 
-        <div class="controls">
-            <div class="mosaic-size">
-                <label for="mosaicSize">馬賽克大小: <span class="size-label">10px</span></label>
-                <input type="range" id="mosaicSize" min="5" max="30" value="10">
+                <div class="mosaic-controls">
+                    <div class="size-control">
+                        <div class="size-header">
+                            <span class="size-title">馬賽克大小調整</span>
+                            <span class="size-label">目前大小: <span id="sizeValue">20</span>px</span>
+                        </div>
+                        <div class="range-container">
+                            <span class="range-value">5px</span>
+                            <input type="range" id="mosaicSize" min="5" max="50" value="20" step="5">
+                            <span class="range-value">50px</span>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="downloadBtn" class="action-button secondary-button">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                            </svg>
+                            下載全部
+                        </button>
+                        <button id="themeToggle" class="action-button">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                            切換主題
+                        </button>
+                    </div>
+                </div>
             </div>
-            
-            <button id="processBtn" disabled>處理圖片</button>
-            <button id="downloadBtn" disabled>下載全部</button>
-            <button id="themeToggle">切換主題</button>
         </div>
 
         <div id="imageList" class="image-list"></div>
+        <div id="completionModal" class="modal-overlay">
+            <div class="modal-content">
+                <button class="modal-close">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+                <h2 class="modal-title">處理完成！</h2>
+                <p class="modal-message">所有照片已經處理完成</p>
+                <div class="modal-buttons">
+                    <button id="modalAdjustBtn" class="modal-button modal-button-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        再調整一下
+                    </button>
+                    <button id="modalDownloadBtn" class="modal-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        下載全部照片
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="creator-info">
+            <div>設計者：賴怡妃</div>
+            <div>created by Yi Fei Lai</div>
+        </div>
     </div>
     <script src="script.js"></script>
 </body>
